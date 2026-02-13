@@ -21,6 +21,7 @@ const state = {
   previewHeaders: [],
   previewRows: [],
   defaultDzForAll: ''
+  ,currentTemplate: 'Конспект'
 };
 
 function initApp() {
@@ -58,7 +59,8 @@ function renderStep(n) {
 function renderStep1(c) {
   c.innerHTML = `<div class="card">
     <h2>Шаг 1. Загрузите файл КТП</h2>
-    <p class="sub">Файл обрабатывается на вашем компьютере, никуда не отправляется.</p>
+    <p class="sub"><b>Что делать:</b> выберите файл КТП в формате .docx или .odt.<br>
+    <b>Важно:</b> файл обрабатывается только у вас в браузере, никуда не отправляется.</p>
     <div class="info-box">
       <h4>Какой файл нужен?</h4>
       <p><b>.docx</b> или <b>.odt</b> с таблицей, где есть колонка темы урока. Колонка ДЗ может отсутствовать.</p>
@@ -146,6 +148,8 @@ function autoDetectColumns() {
 function renderStep2(c) {
   c.innerHTML = `<div class="card">
     <h2>Шаг 2. Выберите столбцы</h2>
+    <p class="sub"><b>Что делать:</b> нажмите на название столбца с темами уроков, затем на столбец ДЗ.<br>
+    Если ДЗ в документе нет, поставьте галочку «В этом КТП нет столбца ДЗ».</p>
     <div id="col-status" class="col-status waiting">Выберите столбцы</div>
     <div class="preview-wrap"><table class="preview-table" id="preview-table"></table></div>
     <div class="option-row"><input type="checkbox" id="no-dz" ${state.noDz ? 'checked' : ''}><label for="no-dz"><b>В этом КТП нет столбца ДЗ</b></label></div>
@@ -234,10 +238,10 @@ function saveColumnsNext() {
 function renderStep3(c) {
   c.innerHTML = `<div class="card">
     <h2>Шаг 3. Разделите на части</h2>
-    <p class="sub">Всего строк уроков: <b>${state.totalDataRows}</b></p>
+    <p class="sub"><b>Что делать:</b> укажите количество уроков в каждой части (четверти/полугодии).<br>
+    Сумма должна быть равна общему числу уроков. Всего строк уроков: <b>${state.totalDataRows}</b>.</p>
     <div class="radio-group"><div class="radio-btn ${state.periodMode === 'quarters' ? 'active' : ''}" id="rb-q">4 четверти</div><div class="radio-btn ${state.periodMode === 'halves' ? 'active' : ''}" id="rb-h">2 полугодия</div></div>
     <div class="parts-grid" id="parts-grid"></div>
-    <div class="option-row"><span style="font-weight:600">Заполнить ДЗ во всех уроках:</span><button class="btn btn-secondary btn-sm" id="dz-k">Конспект</button><button class="btn btn-secondary btn-sm" id="dz-c">Карточка</button><button class="btn btn-secondary btn-sm" id="dz-cl">Очистить</button><span id="dz-state"></span></div>
     <div id="count-info" class="count-info bad"></div>
     <div class="actions"><button class="btn btn-secondary btn-lg" id="btn-back3">← Назад</button><button class="btn btn-primary btn-lg" id="btn-next3" disabled>Далее →</button></div>
   </div>`;
@@ -245,14 +249,10 @@ function renderStep3(c) {
   document.getElementById('btn-back3').onclick = () => renderStep(2);
   document.getElementById('rb-q').onclick = () => setMode('quarters');
   document.getElementById('rb-h').onclick = () => setMode('halves');
-  document.getElementById('dz-k').onclick = () => setDzAll('Конспект');
-  document.getElementById('dz-c').onclick = () => setDzAll('Карточка');
-  document.getElementById('dz-cl').onclick = () => setDzAll('');
   document.getElementById('btn-next3').onclick = buildPartsNext;
 
   if (!state.partCounts.length) state.partCounts = state.periodMode === 'quarters' ? [0,0,0,0] : [0,0];
   buildPartsGrid();
-  refreshDzState();
 }
 
 function setMode(m) {
@@ -331,8 +331,11 @@ function renderStep4(c) {
 
   c.innerHTML = `<div class="card">
     <h2>Шаг 4. Редактор частей</h2>
+    <p class="sub"><b>Что делать:</b> проверьте темы и ДЗ перед выгрузкой.<br>
+    Двойной клик — редактирование, перетаскивание темы — объединение уроков, затем нажмите «Экспорт».</p>
     <div class="tabs" id="tabs">${tabs}</div>
-    <div class="editor-toolbar"><button class="btn btn-danger btn-sm" id="btn-cancel">✖ Отменить урок</button><button class="btn btn-secondary btn-sm" id="btn-restore">↩ Вернуть урок</button><div class="sep"></div><span style="font-size:.85rem;color:var(--gray-500)">Шаблоны ДЗ:</span><button class="tpl-btn" data-tpl="Конспект">Конспект</button><button class="tpl-btn" data-tpl="Карточка">Карточка</button></div>
+    <div class="editor-toolbar"><button class="btn btn-danger btn-sm" id="btn-cancel">✖ Отменить урок</button><button class="btn btn-secondary btn-sm" id="btn-restore">↩ Вернуть урок</button><div class="sep"></div><span style="font-size:.85rem;color:var(--gray-500)">Шаблоны ДЗ:</span><button class="tpl-btn" data-tpl="Конспект">Конспект</button><button class="tpl-btn" data-tpl="Карточка">Карточка</button><button class="tpl-btn" data-tpl="§ ">§...</button><button class="tpl-btn" data-tpl="Упр. ">Упр...</button><div class="sep"></div><button class="btn btn-secondary btn-sm" id="btn-all-part">Установить всем в части</button><button class="btn btn-secondary btn-sm" id="btn-all-all">Установить всем во всех частях</button><span id="tpl-state" style="font-size:.82rem;color:var(--gray-500)"></span></div>
+    <div id="warn-area"></div>
     <div id="editor-content"></div>
     <div class="actions"><button class="btn btn-secondary btn-lg" id="btn-back4">← Назад</button><button class="btn btn-success btn-lg" id="btn-export">💾 Экспорт</button></div>
   </div>`;
@@ -349,8 +352,11 @@ function renderStep4(c) {
   document.getElementById('btn-back4').onclick = () => renderStep(3);
   document.getElementById('btn-cancel').onclick = cancelSelected;
   document.getElementById('btn-restore').onclick = restoreSelected;
+  document.getElementById('btn-all-part').onclick = applyTemplateToPart;
+  document.getElementById('btn-all-all').onclick = applyTemplateToAllParts;
   document.getElementById('btn-export').onclick = doExport;
   document.querySelectorAll('.tpl-btn').forEach(b => b.onclick = () => setTemplate(b.dataset.tpl));
+  updateTemplateState();
 
   drawPartTable();
 }
@@ -463,14 +469,56 @@ function restoreSelected() {
 }
 
 function setTemplate(t) {
-  if (!state.selectedRows.size) return alert('Выделите строки');
+  state.currentTemplate = t;
+  updateTemplateState();
+
+  if (!state.selectedRows.size) {
+    showInfo(`Выбран шаблон: ${t}. Теперь можно нажать «Установить всем...»`);
+    return;
+  }
+
   const rows = state.parts[state.activeTab].rows;
   state.selectedRows.forEach(i => { if (rows[i].status !== 'cancelled') rows[i].dz = t; });
+  showInfo(`Шаблон «${t}» применен к выделенным строкам`);
   drawPartTable();
+}
+
+function applyTemplateToPart() {
+  const tpl = state.currentTemplate || 'Конспект';
+  const rows = state.parts[state.activeTab].rows;
+  rows.forEach(r => { if (r.status !== 'cancelled') r.dz = tpl; });
+  showInfo(`Шаблон «${tpl}» установлен для всех уроков текущей части`);
+  drawPartTable();
+}
+
+function applyTemplateToAllParts() {
+  const tpl = state.currentTemplate || 'Конспект';
+  state.parts.forEach(part => {
+    part.rows.forEach(r => { if (r.status !== 'cancelled') r.dz = tpl; });
+  });
+  showInfo(`Шаблон «${tpl}» установлен для всех уроков во всех частях`);
+  drawPartTable();
+}
+
+function updateTemplateState() {
+  const el = document.getElementById('tpl-state');
+  if (!el) return;
+  el.textContent = `Выбран шаблон: ${state.currentTemplate}`;
+}
+
+function showInfo(msg) {
+  const wa = document.getElementById('warn-area');
+  if (!wa) return;
+  wa.innerHTML = `<div class="success-msg">${esc(msg)}</div>`;
+  setTimeout(() => {
+    if (wa) wa.innerHTML = '';
+  }, 2200);
 }
 
 function doExport() {
   const p = state.periodMode === 'quarters' ? 'Ч' : 'П';
+  const links = [];
+
   for (let i = 0; i < state.parts.length; i++) {
     const data = [['Тема урока', 'Домашнее задание']];
     state.parts[i].rows.forEach(r => data.push([r.tema || '', r.dz || '']));
@@ -478,10 +526,26 @@ function doExport() {
     const ws = XLSX.utils.aoa_to_sheet(data);
     ws['!cols'] = [{wch: 60}, {wch: 40}];
     XLSX.utils.book_append_sheet(wb, ws, 'Уроки');
-    XLSX.writeFile(wb, `${p}${i + 1}.xlsx`, { bookType: 'xlsx' });
-    XLSX.writeFile(wb, `${p}${i + 1}.xls`, { bookType: 'biff8' });
+
+    const fileName = `${p}${i + 1}.xls`;
+    const buffer = XLSX.write(wb, { bookType: 'biff8', type: 'array' });
+    const blob = new Blob([buffer], { type: 'application/vnd.ms-excel' });
+    const url = URL.createObjectURL(blob);
+    links.push({ fileName, url });
   }
-  alert('Готово! Файлы сохранены.');
+
+  const htmlLinks = links.map(
+    (f) => `<a href="${f.url}" download="${f.fileName}" class="btn btn-primary btn-lg" style="text-decoration:none">📥 Скачать ${f.fileName}</a>`
+  ).join('');
+
+  document.getElementById('editor-content').innerHTML = `
+    <div class="export-done">
+      <div class="big-icon">✅</div>
+      <h3>Файлы подготовлены</h3>
+      <p>Скачайте нужные файлы вручную (только формат XLS)</p>
+      <div style="margin-top:20px;display:flex;flex-direction:column;gap:12px;width:100%;max-width:420px">${htmlLinks}</div>
+    </div>
+  `;
 }
 
 async function parseDocx(file) {
