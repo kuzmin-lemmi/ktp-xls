@@ -1,16 +1,12 @@
 {
   "name": "ktp-converter",
   "version": "1.0.0",
-  "description": "Конвертер КТП (DOCX/ODT) в Excel для импорта в Дневник.ру",
-  "main": "server.js",
+  "description": "КТП -> Excel (Vercel A2 frontend-only)",
+  "private": true,
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js",
-    "start:prod": "NODE_ENV=production node server.js",
-    "pm2:start": "pm2 start ecosystem.config.cjs --env production",
-    "pm2:restart": "pm2 restart ecosystem.config.cjs --env production",
-    "pm2:logs": "pm2 logs ktp-converter",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "keywords": [
     "KTP",
@@ -21,19 +17,13 @@
   ],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "type": "module",
   "dependencies": {
-    "@xmldom/xmldom": "^0.8.11",
-    "cors": "^2.8.6",
-    "dotenv": "^17.3.1",
-    "exceljs": "^4.4.0",
-    "express": "^5.2.1",
-    "jsdom": "^28.0.0",
     "jszip": "^3.10.1",
     "mammoth": "^1.11.0",
-    "multer": "^2.0.2",
-    "uuid": "^13.0.0",
-    "xlsx": "^0.18.5",
-    "xml2js": "^0.6.2"
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "vite": "^5.4.11"
   }
 }
