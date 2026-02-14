@@ -2,6 +2,8 @@ import JSZip from 'jszip';
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth/mammoth.browser';
 
+const DRAFT_KEY = 'ktp-converter-draft-v1';
+
 const state = {
   fileName: null,
   rawTables: [],
@@ -21,8 +23,82 @@ const state = {
   previewHeaders: [],
   previewRows: [],
   defaultDzForAll: '',
-  currentTemplate: 'Конспект'
+  currentTemplate: 'Конспект',
+  lastClickedRow: null
 };
+
+function cloneParts(parts) {
+  return parts.map(p => ({ rows: p.rows.map(r => ({ ...r })) }));
+}
+
+function scheduleDraftSave() {
+  if (state.currentStep !== 4 || !state.parts.length) return;
+  clearTimeout(scheduleDraftSave._t);
+  scheduleDraftSave._t = setTimeout(() => {
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({
+        v: 1, ts: Date.now(),
+        fileName: state.fileName,
+        periodMode: state.periodMode,
+        partCounts: state.partCounts,
+        separator: state.separator,
+        noDz: state.noDz,
+        currentTemplate: state.currentTemplate,
+        activeTab: state.activeTab,
+        parts: cloneParts(state.parts)
+      }));
+    } catch {}
+  }, 200);
+}
+
+function restoreDraftIfExists() {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return false;
+    const d = JSON.parse(raw);
+    if (!d || !Array.isArray(d.parts) || !d.parts.length) return false;
+    if (!window.confirm(`Найден черновик${d.fileName ? ` (${d.fileName})` : ''}. Восстановить последний прогресс?`)) {
+      localStorage.removeItem(DRAFT_KEY);
+      return false;
+    }
+    Object.assign(state, {
+      fileName: d.fileName || null,
+      periodMode: d.periodMode === 'halves' ? 'halves' : 'quarters',
+      partCounts: d.partCounts || [],
+      separator: d.separator || '\n',
+      noDz: !!d.noDz,
+      currentTemplate: d.currentTemplate || 'Конспект',
+      parts: cloneParts(d.parts),
+      activeTab: Number.isInteger(d.activeTab) ? d.activeTab : 0
+    });
+    return true;
+  } catch { return false; }
+}
+
+function getPartStats(partIdx) {
+  const rows = state.parts[partIdx].rows;
+  const total = rows.length;
+  const cancelled = rows.filter(r => r.status === 'cancelled').length;
+  const emptyDz = rows.filter(r => r.status !== 'cancelled' && !r.dz.trim()).length;
+  return { total, cancelled, emptyDz, active: total - cancelled };
+}
+
+function syncTabStats() {
+  const p = state.periodMode === 'quarters' ? 'Ч' : 'П';
+  document.querySelectorAll('.tab-btn').forEach((btn, i) => {
+    if (i >= state.parts.length) return;
+    const s = getPartStats(i);
+    const warn = s.cancelled > 0 || s.emptyDz > 0;
+    btn.innerHTML = `${p}${i + 1} <span class="tab-stat${warn ? ' tab-stat-warn' : ''}">${s.active}/${s.total}</span>`;
+    btn.classList.toggle('active', i === state.activeTab);
+  });
+}
+
+function clearDraft() {
+  if (!window.confirm('Очистить черновик? Текущие правки останутся, но автосохранение будет сброшено.')) return;
+  try { localStorage.removeItem(DRAFT_KEY); } catch {}
+  showInfo('Черновик удалён');
+}
 
 /**
  * INIT APP
@@ -41,7 +117,8 @@ function initApp() {
       <div id="steps-container"></div>
     </div>`;
   renderStepper();
-  renderStep(1);
+  if (restoreDraftIfExists()) renderStep(4);
+  else renderStep(1);
 }
 
 /**
@@ -424,7 +501,11 @@ function renderStep4(c) {
   const n = state.parts.length;
   const p = state.periodMode === 'quarters' ? 'Ч' : 'П';
   let tabs = '';
-  for (let i = 0; i < n; i++) tabs += `<button class="tab-btn${i === 0 ? ' active' : ''}" data-ti="${i}">${p}${i + 1}</button>`;
+  for (let i = 0; i < n; i++) {
+    const s = getPartStats(i);
+    const warn = s.cancelled > 0 || s.emptyDz > 0;
+    tabs += `<button class="tab-btn${i === 0 ? ' active' : ''}" data-ti="${i}">${p}${i + 1} <span class="tab-stat${warn ? ' tab-stat-warn' : ''}">${s.active}/${s.total}</span></button>`;
+  }
 
   c.innerHTML = `
     <div class="card">
@@ -436,6 +517,7 @@ function renderStep4(c) {
       <div class="editor-toolbar">
         <button class="btn btn-danger btn-sm" id="btn-cancel">✖ Отменить урок</button>
         <button class="btn btn-secondary btn-sm" id="btn-restore">↩ Вернуть урок</button>
+        <button class="btn btn-secondary btn-sm" id="btn-clear-draft" title="Очистить сохранённый черновик">🗑 Черновик</button>
         <div class="sep"></div>
         <span style="font-size:0.8rem;color:var(--slate-500);font-weight:700">ШАБЛОНЫ:</span>
         <button class="tpl-btn" data-tpl="Конспект">Конспект</button>
@@ -472,6 +554,7 @@ function renderStep4(c) {
   document.getElementById('btn-back4').onclick = () => renderStep(3);
   document.getElementById('btn-cancel').onclick = cancelSelected;
   document.getElementById('btn-restore').onclick = restoreSelected;
+  document.getElementById('btn-clear-draft').onclick = clearDraft;
   document.getElementById('btn-all-part').onclick = applyTemplateToPart;
   document.getElementById('btn-all-all').onclick = applyTemplateToAllParts;
   document.getElementById('btn-export').onclick = doExport;
@@ -485,7 +568,19 @@ function renderStep4(c) {
   drawPartTable();
 }
 
-function drawPartTable() {
+function captureScroll() {
+  const w = document.querySelector('.editor-wrap');
+  return { top: w ? w.scrollTop : 0, left: w ? w.scrollLeft : 0 };
+}
+
+function restoreScroll(snap) {
+  if (!snap) return;
+  const w = document.querySelector('.editor-wrap');
+  if (w) { w.scrollTop = snap.top; w.scrollLeft = snap.left; }
+}
+
+function drawPartTable(opts = {}) {
+  const snap = opts.keepScroll ? captureScroll() : null;
   const part = state.parts[state.activeTab];
   const ec = document.getElementById('editor-content');
   let h = `
@@ -493,40 +588,81 @@ function drawPartTable() {
       <table class="editor-table">
         <thead>
           <tr>
-            <th>№</th>
+            <th style="width:50px">№</th>
             <th>Тема урока (тяните для объединения)</th>
             <th>Домашнее задание</th>
             <th style="width:100px">Статус</th>
+            <th style="width:120px">Действия</th>
           </tr>
         </thead>
         <tbody id="editor-tbody">
-          <tr><td colspan="4" class="drag-hint">💡 Чтобы объединить уроки, перетащите тему одного урока на другой</td></tr>`;
+          <tr><td colspan="5" class="drag-hint">💡 Перетащите тему урока на другой урок чтобы объединить. Shift+клик — выделить диапазон.</td></tr>`;
   
   part.rows.forEach((r, i) => {
     const cancelled = r.status === 'cancelled';
+    const actBtns = cancelled
+      ? `<button class="row-act-btn" data-act="restore-row" data-row="${i}" title="Вернуть">↩</button>`
+      : `<button class="row-act-btn" data-act="cancel-row" data-row="${i}" title="Отменить">✖</button><button class="row-act-btn" data-act="copy-dz-down" data-row="${i}" title="Копировать ДЗ вниз">↓</button>`;
     h += `
       <tr data-row="${i}" class="${cancelled ? 'cancelled' : ''}${state.selectedRows.has(i) ? ' selected-row' : ''}" draggable="${!cancelled}">
         <td class="td-num">${i + 1}</td>
-        <td class="td-tema" data-f="tema" data-r="${i}">${cancelled ? '' : esc(r.tema)}</td>
-        <td class="td-dz" data-f="dz" data-r="${i}">${cancelled ? '' : esc(r.dz)}</td>
+        <td class="td-tema" data-f="tema" data-r="${i}">${cancelled ? '&nbsp;' : esc(r.tema)}</td>
+        <td class="td-dz" data-f="dz" data-r="${i}">${cancelled ? '&nbsp;' : esc(r.dz)}</td>
         <td style="text-align:center">${cancelled ? '<span class="cancelled-badge">ОТМЕНЁН</span>' : ''}</td>
+        <td class="row-actions">${actBtns}</td>
       </tr>`;
   });
   h += '</tbody></table></div>';
   ec.innerHTML = h;
   setupEditorEvents(part);
+  restoreScroll(snap);
+  syncTabStats();
+  scheduleDraftSave();
 }
 
 function setupEditorEvents(part) {
   const tbody = document.getElementById('editor-tbody');
-  
+
   tbody.onclick = (e) => {
     if (e.target.closest('[contenteditable]')) return;
+    // Кнопки строки
+    const actBtn = e.target.closest('.row-act-btn');
+    if (actBtn) {
+      const idx = parseInt(actBtn.dataset.row, 10);
+      if (Number.isNaN(idx) || !part.rows[idx]) return;
+      if (actBtn.dataset.act === 'cancel-row') {
+        preserveForRestore(part.rows[idx]);
+        part.rows[idx].status = 'cancelled';
+        part.rows[idx].tema = ''; part.rows[idx].dz = '';
+        drawPartTable({ keepScroll: true });
+      } else if (actBtn.dataset.act === 'restore-row') {
+        part.rows[idx].status = 'normal';
+        if (!part.rows[idx].tema && part.rows[idx]._backupTema) part.rows[idx].tema = part.rows[idx]._backupTema;
+        if (!part.rows[idx].dz && part.rows[idx]._backupDz) part.rows[idx].dz = part.rows[idx]._backupDz;
+        drawPartTable({ keepScroll: true });
+      } else if (actBtn.dataset.act === 'copy-dz-down') {
+        if (idx + 1 >= part.rows.length) { showInfo('Ниже нет строки'); return; }
+        if (part.rows[idx + 1].status === 'cancelled') { showInfo('Нижняя строка отменена'); return; }
+        part.rows[idx + 1].dz = part.rows[idx].dz || '';
+        drawPartTable({ keepScroll: true });
+      }
+      return;
+    }
+    // Выделение строк
     const tr = e.target.closest('tr[data-row]');
     if (!tr) return;
     const r = parseInt(tr.dataset.row, 10);
-    if (e.ctrlKey || e.metaKey) state.selectedRows.has(r) ? state.selectedRows.delete(r) : state.selectedRows.add(r);
-    else state.selectedRows = new Set([r]);
+    if (e.shiftKey && state.lastClickedRow !== null) {
+      const from = Math.min(state.lastClickedRow, r);
+      const to = Math.max(state.lastClickedRow, r);
+      for (let i = from; i <= to; i++) state.selectedRows.add(i);
+    } else if (e.ctrlKey || e.metaKey) {
+      state.selectedRows.has(r) ? state.selectedRows.delete(r) : state.selectedRows.add(r);
+      state.lastClickedRow = r;
+    } else {
+      state.selectedRows = new Set([r]);
+      state.lastClickedRow = r;
+    }
     highlightRows();
   };
 
@@ -536,26 +672,27 @@ function setupEditorEvents(part) {
     const r = parseInt(td.dataset.r, 10);
     const f = td.dataset.f;
     if (part.rows[r].status === 'cancelled') return;
-    
+    td.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     td.contentEditable = 'true';
     td.focus();
-    
     const save = () => {
       td.contentEditable = 'false';
-      const val = td.innerText.trim();
-      part.rows[r][f] = val;
-      if (f === 'tema' && !val) {
+      part.rows[r][f] = td.innerText.trim();
+      if (f === 'tema' && !part.rows[r][f]) {
         preserveForRestore(part.rows[r]);
         part.rows[r].status = 'cancelled';
         part.rows[r].dz = '';
       }
-      drawPartTable();
+      drawPartTable({ keepScroll: true });
     };
     td.onblur = save;
     td.onkeydown = ev => { if (ev.key === 'Enter') { ev.preventDefault(); td.blur(); } };
   };
 
   let src = null;
+  let dragOverTr = null;
+  const clearDragOver = () => { if (dragOverTr) { dragOverTr.classList.remove('drag-over-row', 'drag-insert-top', 'drag-insert-bottom'); dragOverTr = null; } };
+
   tbody.ondragstart = (e) => {
     const tr = e.target.closest('tr[data-row]');
     if (!tr) return;
@@ -564,38 +701,46 @@ function setupEditorEvents(part) {
   };
   tbody.ondragover = (e) => {
     e.preventDefault();
+    // автоскролл
+    const wrap = document.querySelector('.editor-wrap');
+    if (wrap) {
+      const rect = wrap.getBoundingClientRect();
+      if (e.clientY < rect.top + 56) wrap.scrollTop -= 18;
+      else if (e.clientY > rect.bottom - 56) wrap.scrollTop += 18;
+    }
     const tr = e.target.closest('tr[data-row]');
-    if (tr) tr.classList.add('drag-over-row');
+    if (!tr) return;
+    if (dragOverTr !== tr) {
+      clearDragOver();
+      dragOverTr = tr;
+      const rect = tr.getBoundingClientRect();
+      const pos = e.clientY < rect.top + rect.height / 2 ? 'top' : 'bottom';
+      tr.classList.add('drag-over-row', pos === 'top' ? 'drag-insert-top' : 'drag-insert-bottom');
+    }
   };
-  tbody.ondragleave = (e) => {
-    const tr = e.target.closest('tr[data-row]');
-    if (tr) tr.classList.remove('drag-over-row');
-  };
+  tbody.ondragleave = (e) => { if (!e.relatedTarget || !tbody.contains(e.relatedTarget)) clearDragOver(); };
   tbody.ondragend = (e) => {
     const tr = e.target.closest('tr[data-row]');
     if (tr) tr.style.opacity = '1';
-    tbody.querySelectorAll('.drag-over-row').forEach(x => x.classList.remove('drag-over-row'));
+    clearDragOver(); src = null;
   };
   tbody.ondrop = (e) => {
     e.preventDefault();
+    clearDragOver();
     const tr = e.target.closest('tr[data-row]');
     if (!tr) return;
     const dst = parseInt(tr.dataset.row, 10);
     if (src === null || dst === src) return;
-    
     const srcRow = part.rows[src], dstRow = part.rows[dst];
     if (dstRow.status === 'cancelled') {
-        dstRow.tema = srcRow.tema;
-        dstRow.dz = srcRow.dz;
-        dstRow.status = 'normal';
+      dstRow.tema = srcRow.tema; dstRow.dz = srcRow.dz; dstRow.status = 'normal';
     } else {
-        dstRow.tema = [dstRow.tema, srcRow.tema].filter(Boolean).join(state.separator);
-        dstRow.dz = [dstRow.dz, srcRow.dz].filter(Boolean).join(state.separator);
+      dstRow.tema = [dstRow.tema, srcRow.tema].filter(Boolean).join(state.separator);
+      dstRow.dz = [dstRow.dz, srcRow.dz].filter(Boolean).join(state.separator);
     }
-    
     preserveForRestore(srcRow);
     srcRow.tema = ''; srcRow.dz = ''; srcRow.status = 'cancelled';
-    drawPartTable();
+    drawPartTable({ keepScroll: true });
   };
 }
 
@@ -670,18 +815,29 @@ function showInfo(msg) {
 }
 
 function doExport() {
+  // Проверка перед экспортом
+  const issues = [];
+  state.parts.forEach((part, pi) => {
+    const lbl = (state.periodMode === 'quarters' ? 'Ч' : 'П') + (pi + 1);
+    const emptyTema = part.rows.filter(r => r.status !== 'cancelled' && !r.tema.trim()).length;
+    const emptyDz = part.rows.filter(r => r.status !== 'cancelled' && !r.dz.trim()).length;
+    if (emptyTema) issues.push(`${lbl}: ${emptyTema} уроков с пустой темой`);
+    if (emptyDz) issues.push(`${lbl}: ${emptyDz} уроков с пустым ДЗ`);
+  });
+  if (issues.length && !window.confirm(`Найдены незаполненные данные:\n\n${issues.join('\n')}\n\nЭкспортировать всё равно?`)) return;
+
   const p = state.periodMode === 'quarters' ? 'Ч' : 'П';
   const links = [];
   for (let i = 0; i < state.parts.length; i++) {
-    const data = [['Тема урока', 'Домашнее задание']];
-    state.parts[i].rows.forEach(r => data.push([r.tema || '', r.dz || '']));
+    const data = [['№ урока', 'Тема урока', 'Домашнее задание']];
+    state.parts[i].rows.forEach((r, idx) => data.push([idx + 1, r.tema || '', r.dz || '']));
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet(data);
-    ws['!cols'] = [{wch: 55}, {wch: 40}];
+    ws['!cols'] = [{wch: 12}, {wch: 55}, {wch: 40}];
     XLSX.utils.book_append_sheet(wb, ws, 'Уроки');
-    const buf = XLSX.write(wb, { bookType: 'biff8', type: 'array' });
-    const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.ms-excel' }));
-    links.push({ name: `${p}${i+1}.xls`, url });
+    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    links.push({ name: `${p}${i+1}.xlsx`, url });
   }
   
   const htmlLinks = links.map(f => `
@@ -693,7 +849,7 @@ function doExport() {
     <div class="export-done">
       <div class="big-icon">✅</div>
       <h3>Готово! Файлы для импорта созданы</h3>
-      <p>Нажмите на кнопки ниже, чтобы сохранить результаты в формате XLS.</p>
+      <p>Нажмите на кнопки ниже, чтобы сохранить файлы в формате XLSX (Excel, Google Sheets, LibreOffice).</p>
       <div style="margin-top:20px;display:flex;flex-direction:column;gap:12px;width:100%;max-width:440px">${htmlLinks}</div>
     </div>`;
 }
