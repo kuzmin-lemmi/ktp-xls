@@ -262,9 +262,13 @@ select.styled:focus { border-color: var(--primary); ring: 2px var(--primary-ligh
   transition: border-color 0.2s;
 }
 .part-input input:focus { outline: none; border-color: var(--primary); }
-.count-info { padding: 12px 16px; border-radius: 12px; font-size: 0.9rem; display: flex; gap: 20px; flex-wrap: wrap; font-weight: 600; margin-top: 8px; }
+.count-info { padding: 12px 16px; border-radius: 12px; font-size: 0.9rem; display: flex; gap: 12px; flex-wrap: wrap; font-weight: 600; margin-top: 8px; align-items: center; }
 .count-info.ok { background: var(--success-light); color: #065f46; border: 1px solid #a7f3d0; }
 .count-info.bad { background: var(--danger-light); color: #991b1b; border: 1px solid #fecaca; }
+.ci-item { padding: 4px 12px; border-radius: 8px; background: rgba(255,255,255,0.6); }
+.ci-ok { background: #bbf7d0 !important; color: #065f46; }
+.ci-warn { background: var(--warning-light) !important; color: #92400e; }
+.ci-err { background: var(--danger-light) !important; color: #991b1b; }
 
 /* ===== TABS ===== */
 .tabs { display: flex; gap: 6px; border-bottom: 2px solid var(--slate-200); padding: 0 4px; }

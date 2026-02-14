@@ -505,12 +505,25 @@ function recalcParts() {
     state.partCounts[i] = Number.isNaN(v) ? 0 : v;
     sum += state.partCounts[i];
   }
-  const ok = sum === state.totalDataRows && sum > 0;
+  const total = state.totalDataRows;
+  const remaining = total - sum;
+  const ok = sum === total && sum > 0;
   const info = document.getElementById('count-info');
   info.className = `count-info ${ok ? 'ok' : 'bad'}`;
+
+  let statusHtml = '';
+  if (ok) {
+    statusHtml = `<span class="ci-item ci-ok">✅ Совпадает</span>`;
+  } else if (remaining > 0) {
+    statusHtml = `<span class="ci-item ci-warn">Осталось распределить: <b>${remaining}</b></span>`;
+  } else {
+    statusHtml = `<span class="ci-item ci-err">Превышение на: <b>${Math.abs(remaining)}</b></span>`;
+  }
+
   info.innerHTML = `
-    <span>Всего уроков: <b>${sum}</b></span>
-    ${ok ? '<span>✅ Количество совпадает с таблицей</span>' : `<span>❌ Не совпадает. Нужно: <b>${state.totalDataRows}</b></span>`}`;
+    <span class="ci-item">В КТП: <b>${total}</b></span>
+    <span class="ci-item">Распределено: <b>${sum}</b></span>
+    ${statusHtml}`;
   document.getElementById('btn-next3').disabled = !ok;
 }
 
