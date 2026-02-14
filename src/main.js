@@ -260,13 +260,51 @@ async function handleFile(file) {
 function renderTableList() {
   const list = document.getElementById('table-list');
   list.innerHTML = '';
+
   state.rawTables.forEach((t, i) => {
-    const d = document.createElement('div');
-    d.className = `table-item${state.selectedTableIdx === i ? ' selected' : ''}`;
+    const isSelected = state.selectedTableIdx === i;
+    const totalRows = t.rows.length;
     const cols = Math.max(...t.rows.map(r => r.length));
+    const firstRow = t.rows[0] || [];
+    const lastRows = t.rows.slice(-3);
+
+    // Определяем похоже ли первая строка на заголовок
+    const looksLikeHeader = firstRow.some(cell => {
+      const low = String(cell || '').toLowerCase();
+      return low.includes('тема') || low.includes('урок') || low.includes('дз') || low.includes('домашн') || low.includes('№');
+    });
+
+    const dataRows = totalRows - 1; // если есть заголовок
+    const lessonWord = (n) => n === 1 ? 'урок' : (n >= 2 && n <= 4 ? 'урока' : 'уроков');
+
+    // Превью первой строки
+    const firstRowPreview = firstRow.slice(0, 4).map(c => `<span class="row-preview-cell${looksLikeHeader ? ' header-cell' : ''}">${esc(String(c || '').substring(0, 30))}</span>`).join('');
+
+    // Превью последних строк
+    const lastRowsPreview = lastRows.map((r, ri) => {
+      const isEmpty = r.every(c => !String(c || '').trim());
+      const isLast = ri === lastRows.length - 1;
+      return `<div class="row-preview-line${isEmpty ? ' empty-row' : ''}${isLast ? ' last-row' : ''}">${r.slice(0, 4).map(c => `<span class="row-preview-cell">${esc(String(c || '').substring(0, 30))}</span>`).join('')}${isEmpty ? '<span class="empty-badge">пустая строка</span>' : ''}</div>`;
+    }).join('');
+
+    const d = document.createElement('div');
+    d.className = `table-item${isSelected ? ' selected' : ''}`;
     d.innerHTML = `
-      <span><b>Таблица ${i + 1}</b> — ${t.rows.length} строк</span>
-      <span style="font-size:0.8rem;opacity:0.7">${cols} столб.</span>`;
+      <div class="table-item-header">
+        <div>
+          <b>Таблица ${i + 1}</b>
+          <span class="tbl-stat">всего строк: <b>${totalRows}</b></span>
+          <span class="tbl-stat tbl-stat-lessons">уроков: <b>${dataRows}</b> ${lessonWord(dataRows)}</span>
+          <span class="tbl-stat tbl-stat-cols">${cols} столбцов</span>
+        </div>
+      </div>
+      <div class="table-item-preview">
+        <div class="preview-section-label">Первая строка ${looksLikeHeader ? '<span class="badge-header">похожа на заголовок ✓</span>' : '<span class="badge-noheader">может быть урок</span>'}:</div>
+        <div class="row-preview-line header-line">${firstRowPreview}</div>
+        <div class="preview-section-label" style="margin-top:8px">Последние строки (проверьте на «мусор»):</div>
+        ${lastRowsPreview}
+      </div>`;
+
     d.onclick = () => {
       state.selectedTableIdx = i;
       autoDetectColumns();
@@ -275,6 +313,7 @@ function renderTableList() {
     };
     list.appendChild(d);
   });
+
   document.getElementById('btn-next1').disabled = state.selectedTableIdx === null;
 }
 
