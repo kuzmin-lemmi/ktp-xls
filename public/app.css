@@ -375,6 +375,27 @@ select.styled:focus { border-color: var(--primary); ring: 2px var(--primary-ligh
 .export-done .big-icon { font-size: 64px; }
 .export-done h3 { font-size: 1.3rem; font-weight: 800; color: var(--slate-800); }
 
+.export-name-screen {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 16px; padding: 32px; text-align: center;
+}
+.export-name-screen .big-icon { font-size: 56px; }
+.export-name-screen h3 { font-size: 1.3rem; font-weight: 800; color: var(--slate-800); }
+.export-name-screen p { color: var(--slate-500); font-size: 0.95rem; }
+.name-preview-example { font-weight: 700; color: var(--primary); }
+.export-name-row {
+  display: flex; gap: 12px; align-items: center;
+  flex-wrap: wrap; justify-content: center; width: 100%; max-width: 560px;
+}
+.class-name-input {
+  flex: 1; min-width: 160px; max-width: 220px;
+  padding: 14px 18px; border: 2px solid var(--slate-300);
+  border-radius: 12px; font-size: 1.2rem; font-weight: 700;
+  text-align: center; outline: none; transition: border-color 0.2s;
+}
+.class-name-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+.export-links-ready { margin-top: 8px; width: 100%; display: flex; flex-direction: column; align-items: center; }
+
 .hidden { display: none !important; }
 .loading { display: inline-block; width: 18px; height: 18px; border: 2px solid var(--slate-200); border-top-color: var(--primary); border-radius: 50%; animation: spin .6s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

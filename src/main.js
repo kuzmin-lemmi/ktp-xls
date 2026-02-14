@@ -878,32 +878,62 @@ function doExport() {
   });
   if (issues.length && !window.confirm(`Найдены незаполненные данные:\n\n${issues.join('\n')}\n\nЭкспортировать всё равно?`)) return;
 
+  // Экран выбора названия класса
   const p = state.periodMode === 'quarters' ? 'Ч' : 'П';
-  const links = [];
-  for (let i = 0; i < state.parts.length; i++) {
-    const data = [['№ урока', 'Тема урока', 'Домашнее задание']];
-    state.parts[i].rows.forEach((r, idx) => data.push([idx + 1, r.tema || '', r.dz || '']));
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet(data);
-    ws['!cols'] = [{wch: 12}, {wch: 55}, {wch: 40}];
-    XLSX.utils.book_append_sheet(wb, ws, 'Уроки');
-    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
-    links.push({ name: `${p}${i+1}.xlsx`, url });
-  }
-  
-  const htmlLinks = links.map(f => `
-    <a href="${f.url}" download="${f.name}" class="btn btn-primary btn-lg" style="text-decoration:none;width:100%">
-      📥 Скачать ${f.name}
-    </a>`).join('');
+  const partLabels = state.parts.map((_, i) => `${p}${i + 1}`).join(', ');
 
   document.getElementById('editor-content').innerHTML = `
-    <div class="export-done">
-      <div class="big-icon">✅</div>
-      <h3>Готово! Файлы для импорта созданы</h3>
-      <p>Нажмите на кнопки ниже, чтобы сохранить файлы в формате XLSX (Excel, Google Sheets, LibreOffice).</p>
-      <div style="margin-top:20px;display:flex;flex-direction:column;gap:12px;width:100%;max-width:440px">${htmlLinks}</div>
+    <div class="export-name-screen">
+      <div class="big-icon">📝</div>
+      <h3>Введите название класса</h3>
+      <p>Файлы будут названы: <span id="name-preview-label" class="name-preview-example">10А ${p}1.xlsx, 10А ${p}2.xlsx...</span></p>
+      <div class="export-name-row">
+        <input id="class-name-input" class="class-name-input" type="text" placeholder="Например: 10А" maxlength="20" autofocus>
+        <button class="btn btn-success btn-lg" id="btn-generate">Сформировать файлы →</button>
+      </div>
+      <div id="export-links-area"></div>
     </div>`;
+
+  const input = document.getElementById('class-name-input');
+  const preview = document.getElementById('name-preview-label');
+
+  input.addEventListener('input', () => {
+    const cls = input.value.trim();
+    const prefix = cls ? `${cls} ` : '';
+    preview.textContent = state.parts.map((_, i) => `${prefix}${p}${i+1}.xlsx`).join(', ');
+  });
+
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') generateLinks(); });
+  document.getElementById('btn-generate').onclick = generateLinks;
+
+  function generateLinks() {
+    const cls = input.value.trim();
+    const prefix = cls ? `${cls} ` : '';
+    const links = [];
+
+    for (let i = 0; i < state.parts.length; i++) {
+      const data = [['№ урока', 'Тема урока', 'Домашнее задание']];
+      state.parts[i].rows.forEach((r, idx) => data.push([idx + 1, r.tema || '', r.dz || '']));
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(data);
+      ws['!cols'] = [{wch: 12}, {wch: 55}, {wch: 40}];
+      XLSX.utils.book_append_sheet(wb, ws, 'Уроки');
+      const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+      links.push({ name: `${prefix}${p}${i+1}.xlsx`, url });
+    }
+
+    const htmlLinks = links.map(f => `
+      <a href="${f.url}" download="${f.name}" class="btn btn-primary btn-lg" style="text-decoration:none;width:100%">
+        📥 Скачать ${esc(f.name)}
+      </a>`).join('');
+
+    document.getElementById('export-links-area').innerHTML = `
+      <div class="export-links-ready">
+        <p style="font-weight:700;color:var(--success);margin-bottom:12px">✅ Файлы готовы — нажмите для скачивания:</p>
+        <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:440px">${htmlLinks}</div>
+      </div>`;
+  }
 }
 
 async function parseDocx(file) {
