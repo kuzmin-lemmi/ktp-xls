@@ -2,6 +2,9 @@ import JSZip from 'jszip';
 import * as XLSX from 'xlsx';
 import * as mammoth from 'mammoth/mammoth.browser';
 
+const DRAFT_KEY = 'ktp-converter-draft-v1';
+const MAX_UNDO = 40;
+
 const state = {
   fileName: null,
   rawTables: [],
@@ -20,9 +23,90 @@ const state = {
   currentStep: 1,
   previewHeaders: [],
   previewRows: [],
-  defaultDzForAll: ''
-  ,currentTemplate: 'Конспект'
+  defaultDzForAll: '',
+  currentTemplate: 'Конспект',
+  undoStack: []
 };
+
+function cloneParts(parts) {
+  return parts.map(part => ({ rows: part.rows.map(row => ({ ...row })) }));
+}
+
+function pushUndoSnapshot() {
+  if (!state.parts.length) return;
+  state.undoStack.push({
+    parts: cloneParts(state.parts),
+    activeTab: state.activeTab,
+    selectedRows: Array.from(state.selectedRows)
+  });
+  if (state.undoStack.length > MAX_UNDO) state.undoStack.shift();
+}
+
+function undoLastAction() {
+  const prev = state.undoStack.pop();
+  if (!prev) {
+    showInfo('Больше нечего отменять');
+    return;
+  }
+  state.parts = cloneParts(prev.parts);
+  state.activeTab = Math.max(0, Math.min(prev.activeTab, state.parts.length - 1));
+  state.selectedRows = new Set(prev.selectedRows.filter(i => i >= 0 && i < state.parts[state.activeTab].rows.length));
+  syncActiveTabButton();
+  drawPartTable({ keepScroll: true });
+  scheduleDraftSave();
+}
+
+function scheduleDraftSave() {
+  if (state.currentStep !== 4 || !state.parts.length) return;
+  clearTimeout(scheduleDraftSave._timer);
+  scheduleDraftSave._timer = setTimeout(saveDraftNow, 180);
+}
+
+function saveDraftNow() {
+  if (state.currentStep !== 4 || !state.parts.length) return;
+  const payload = {
+    v: 1,
+    ts: Date.now(),
+    fileName: state.fileName,
+    periodMode: state.periodMode,
+    partCounts: state.partCounts,
+    separator: state.separator,
+    noDz: state.noDz,
+    currentTemplate: state.currentTemplate,
+    activeTab: state.activeTab,
+    parts: cloneParts(state.parts)
+  };
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function restoreDraftIfExists() {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return false;
+    const draft = JSON.parse(raw);
+    if (!draft || !Array.isArray(draft.parts) || !draft.parts.length) return false;
+    const ok = window.confirm(`Найден черновик${draft.fileName ? ` (${draft.fileName})` : ''}. Восстановить последний прогресс?`);
+    if (!ok) {
+      localStorage.removeItem(DRAFT_KEY);
+      return false;
+    }
+    state.fileName = draft.fileName || null;
+    state.periodMode = draft.periodMode === 'halves' ? 'halves' : 'quarters';
+    state.partCounts = Array.isArray(draft.partCounts) ? draft.partCounts : [];
+    state.separator = draft.separator || '\n';
+    state.noDz = !!draft.noDz;
+    state.currentTemplate = draft.currentTemplate || 'Конспект';
+    state.parts = cloneParts(draft.parts);
+    state.activeTab = Number.isInteger(draft.activeTab) ? draft.activeTab : 0;
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function initApp() {
   document.getElementById('root').innerHTML = `
@@ -32,7 +116,8 @@ function initApp() {
     </header>
     <div class="wizard"><div class="stepper" id="stepper"></div><div id="steps-container"></div></div>`;
   renderStepper();
-  renderStep(1);
+  if (restoreDraftIfExists()) renderStep(4);
+  else renderStep(1);
 }
 
 function renderStepper() {
@@ -99,6 +184,8 @@ async function handleFile(file) {
     else throw new Error('Поддерживаются только .docx и .odt');
 
     if (!tables.length) throw new Error('Таблицы не найдены в файле');
+
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
 
     state.fileName = file.name;
     state.rawTables = tables;
@@ -320,6 +407,8 @@ function buildPartsNext() {
     state.parts.push({ rows: rows.slice(offset, offset + cnt) });
     offset += cnt;
   });
+  state.undoStack = [];
+  scheduleDraftSave();
   renderStep(4);
 }
 
@@ -334,50 +423,143 @@ function renderStep4(c) {
     <p class="sub"><b>Что делать:</b> проверьте темы и ДЗ перед выгрузкой.<br>
     Двойной клик — редактирование, перетаскивание темы — объединение уроков, затем нажмите «Экспорт».</p>
     <div class="tabs" id="tabs">${tabs}</div>
-    <div class="editor-toolbar"><button class="btn btn-danger btn-sm" id="btn-cancel">✖ Отменить урок</button><button class="btn btn-secondary btn-sm" id="btn-restore">↩ Вернуть урок</button><div class="sep"></div><span style="font-size:.85rem;color:var(--gray-500)">Шаблоны ДЗ:</span><button class="tpl-btn" data-tpl="Конспект">Конспект</button><button class="tpl-btn" data-tpl="Карточка">Карточка</button><button class="tpl-btn" data-tpl="§ ">§...</button><button class="tpl-btn" data-tpl="Упр. ">Упр...</button><div class="sep"></div><button class="btn btn-secondary btn-sm" id="btn-all-part">Установить всем в части</button><button class="btn btn-secondary btn-sm" id="btn-all-all">Установить всем во всех частях</button><span id="tpl-state" style="font-size:.82rem;color:var(--gray-500)"></span></div>
+    <div class="editor-toolbar"><button class="btn btn-danger btn-sm" id="btn-cancel">✖ Отменить урок</button><button class="btn btn-secondary btn-sm" id="btn-restore">↩ Вернуть урок</button><button class="btn btn-secondary btn-sm" id="btn-undo">↶ Отменить действие</button><div class="sep"></div><span style="font-size:.85rem;color:var(--gray-500)">Шаблоны ДЗ:</span><button class="tpl-btn" data-tpl="Конспект">Конспект</button><button class="tpl-btn" data-tpl="Карточка">Карточка</button><button class="tpl-btn" data-tpl="§ ">§...</button><button class="tpl-btn" data-tpl="Упр. ">Упр...</button><div class="sep"></div><button class="btn btn-secondary btn-sm" id="btn-all-part">Установить всем в части</button><button class="btn btn-secondary btn-sm" id="btn-all-all">Установить всем во всех частях</button><span id="tpl-state" style="font-size:.82rem;color:var(--gray-500)"></span></div>
     <div id="warn-area"></div>
     <div id="editor-content"></div>
     <div class="actions"><button class="btn btn-secondary btn-lg" id="btn-back4">← Назад</button><button class="btn btn-success btn-lg" id="btn-export">💾 Экспорт</button></div>
   </div>`;
 
-  state.activeTab = 0;
+  if (state.activeTab < 0 || state.activeTab >= n) state.activeTab = 0;
   state.selectedRows = new Set();
+  state.undoStack = [];
   document.getElementById('tabs').addEventListener('click', e => {
     const b = e.target.closest('.tab-btn');
     if (!b) return;
     state.activeTab = parseInt(b.dataset.ti, 10);
-    document.querySelectorAll('.tab-btn').forEach((x, i) => x.classList.toggle('active', i === state.activeTab));
+    syncActiveTabButton();
     drawPartTable();
+    scheduleDraftSave();
   });
   document.getElementById('btn-back4').onclick = () => renderStep(3);
   document.getElementById('btn-cancel').onclick = cancelSelected;
   document.getElementById('btn-restore').onclick = restoreSelected;
+  document.getElementById('btn-undo').onclick = undoLastAction;
   document.getElementById('btn-all-part').onclick = applyTemplateToPart;
   document.getElementById('btn-all-all').onclick = applyTemplateToAllParts;
   document.getElementById('btn-export').onclick = doExport;
   document.querySelectorAll('.tpl-btn').forEach(b => b.onclick = () => setTemplate(b.dataset.tpl));
   updateTemplateState();
+  syncActiveTabButton();
 
   drawPartTable();
+  scheduleDraftSave();
 }
 
-function drawPartTable() {
+function syncActiveTabButton() {
+  document.querySelectorAll('.tab-btn').forEach((x, i) => x.classList.toggle('active', i === state.activeTab));
+}
+
+function captureEditorScroll() {
+  const wrap = document.querySelector('.editor-wrap');
+  return {
+    top: wrap ? wrap.scrollTop : 0,
+    left: wrap ? wrap.scrollLeft : 0,
+    pageY: window.scrollY
+  };
+}
+
+function restoreEditorScroll(snapshot) {
+  if (!snapshot) return;
+  const wrap = document.querySelector('.editor-wrap');
+  if (wrap) {
+    wrap.scrollTop = snapshot.top;
+    wrap.scrollLeft = snapshot.left;
+  }
+  window.scrollTo({ top: snapshot.pageY });
+}
+
+function drawPartTable(opts = {}) {
+  const keepScroll = !!opts.keepScroll;
+  const scrollSnapshot = keepScroll ? captureEditorScroll() : null;
   const part = state.parts[state.activeTab];
   const ec = document.getElementById('editor-content');
-  let h = `<div class="editor-wrap"><table class="editor-table"><thead><tr><th style="width:50px">№</th><th>Тема урока</th><th>Домашнее задание</th><th style="width:120px">Статус</th></tr></thead><tbody id="editor-tbody">`;
+  let h = `<div class="editor-wrap"><table class="editor-table"><thead><tr><th style="width:50px">№</th><th>Тема урока</th><th>Домашнее задание</th><th style="width:120px">Статус</th><th style="width:160px">Действия</th></tr></thead><tbody id="editor-tbody">`;
   part.rows.forEach((r, i) => {
     const cancelled = r.status === 'cancelled';
-    h += `<tr data-row="${i}" class="${cancelled?'cancelled':''}${state.selectedRows.has(i)?' selected-row':''}" draggable="${!cancelled}"><td class="td-num">${i+1}</td><td class="td-tema" data-f="tema" data-r="${i}">${cancelled?'':esc(r.tema)}</td><td class="td-dz" data-f="dz" data-r="${i}">${cancelled?'':esc(r.dz)}</td><td style="text-align:center">${cancelled?'<span class="cancelled-badge">ОТМЕНЁН</span>':''}</td></tr>`;
+    const actionBtns = cancelled
+      ? `<button class="row-act-btn" data-act="restore-row" data-row="${i}" title="Вернуть строку">↩</button>`
+      : `<button class="row-act-btn" data-act="cancel-row" data-row="${i}" title="Отменить урок">✖</button><button class="row-act-btn" data-act="copy-dz-down" data-row="${i}" title="Копировать ДЗ вниз">↓</button>`;
+    h += `<tr data-row="${i}" class="${cancelled?'cancelled':''}${state.selectedRows.has(i)?' selected-row':''}" draggable="${!cancelled}"><td class="td-num">${i+1}</td><td class="td-tema" data-f="tema" data-r="${i}">${cancelled?'&nbsp;':esc(r.tema)}</td><td class="td-dz" data-f="dz" data-r="${i}">${cancelled?'&nbsp;':esc(r.dz)}</td><td style="text-align:center">${cancelled?'<span class="cancelled-badge">ОТМЕНЁН</span>':''}</td><td class="row-actions">${actionBtns}</td></tr>`;
   });
   h += '</tbody></table></div>';
   ec.innerHTML = h;
   setupEditorEvents(part);
+  restoreEditorScroll(scrollSnapshot);
 }
 
 function setupEditorEvents(part) {
   const tbody = document.getElementById('editor-tbody');
+  let dragOverRow = null;
+  let dragOverPos = null;
+
+  const clearDragOver = () => {
+    if (dragOverRow) {
+      dragOverRow.classList.remove('drag-over-row');
+      dragOverRow.classList.remove('drag-insert-top');
+      dragOverRow.classList.remove('drag-insert-bottom');
+      dragOverRow = null;
+      dragOverPos = null;
+    }
+  };
+
+  const autoScrollOnDrag = (e) => {
+    const wrap = document.querySelector('.editor-wrap');
+    if (!wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    const edge = 56;
+    const step = 20;
+    if (e.clientY < rect.top + edge) wrap.scrollTop -= step;
+    else if (e.clientY > rect.bottom - edge) wrap.scrollTop += step;
+  };
+
   tbody.onclick = (e) => {
     if (e.target.closest('[contenteditable]')) return;
+    const actBtn = e.target.closest('.row-act-btn');
+    if (actBtn) {
+      const idx = parseInt(actBtn.dataset.row, 10);
+      if (Number.isNaN(idx) || !part.rows[idx]) return;
+      const action = actBtn.dataset.act;
+      if (action === 'cancel-row') {
+        pushUndoSnapshot();
+        preserveForRestore(part.rows[idx]);
+        part.rows[idx].status = 'cancelled';
+        part.rows[idx].tema = '';
+        part.rows[idx].dz = '';
+        drawPartTable({ keepScroll: true });
+        scheduleDraftSave();
+      } else if (action === 'restore-row') {
+        pushUndoSnapshot();
+        part.rows[idx].status = 'normal';
+        if (!part.rows[idx].tema && part.rows[idx]._backupTema) part.rows[idx].tema = part.rows[idx]._backupTema;
+        if (!part.rows[idx].dz && part.rows[idx]._backupDz) part.rows[idx].dz = part.rows[idx]._backupDz;
+        drawPartTable({ keepScroll: true });
+        scheduleDraftSave();
+      } else if (action === 'copy-dz-down') {
+        if (idx + 1 >= part.rows.length) {
+          showInfo('Ниже нет строки для копирования');
+          return;
+        }
+        if (part.rows[idx + 1].status === 'cancelled') {
+          showInfo('Нижняя строка отменена, восстановите ее сначала');
+          return;
+        }
+        pushUndoSnapshot();
+        part.rows[idx + 1].dz = part.rows[idx].dz || '';
+        drawPartTable({ keepScroll: true });
+        scheduleDraftSave();
+      }
+      return;
+    }
     const tr = e.target.closest('tr[data-row]');
     if (!tr) return;
     const r = parseInt(tr.dataset.row, 10);
@@ -389,21 +571,25 @@ function setupEditorEvents(part) {
   tbody.ondblclick = (e) => {
     const td = e.target.closest('.td-tema, .td-dz');
     if (!td) return;
+    const tr = td.closest('tr[data-row]');
     const r = parseInt(td.dataset.r, 10);
     const f = td.dataset.f;
     if (part.rows[r].status === 'cancelled') return;
+    if (tr) tr.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     td.contentEditable = 'true';
     td.focus();
     const save = () => {
       td.contentEditable = 'false';
       const val = td.innerText.trim();
+      if (part.rows[r][f] !== val) pushUndoSnapshot();
       part.rows[r][f] = val;
       if (f === 'tema' && !val) {
         preserveForRestore(part.rows[r]);
         part.rows[r].status = 'cancelled';
         part.rows[r].dz = '';
       }
-      drawPartTable();
+      drawPartTable({ keepScroll: true });
+      scheduleDraftSave();
       td.removeEventListener('blur', save);
     };
     td.addEventListener('blur', save);
@@ -416,13 +602,37 @@ function setupEditorEvents(part) {
     src = parseInt(tr.dataset.row, 10);
     e.dataTransfer.setData('text/plain', String(src));
   });
-  tbody.addEventListener('dragover', (e) => e.preventDefault());
+  tbody.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    autoScrollOnDrag(e);
+    const tr = e.target.closest('tr[data-row]');
+    if (!tr) return;
+    const rect = tr.getBoundingClientRect();
+    const pos = e.clientY < rect.top + rect.height / 2 ? 'top' : 'bottom';
+    if (dragOverRow !== tr || dragOverPos !== pos) {
+      clearDragOver();
+      dragOverRow = tr;
+      dragOverPos = pos;
+      dragOverRow.classList.add('drag-over-row');
+      dragOverRow.classList.add(pos === 'top' ? 'drag-insert-top' : 'drag-insert-bottom');
+    }
+  });
+  tbody.addEventListener('dragleave', (e) => {
+    const related = e.relatedTarget;
+    if (!related || !tbody.contains(related)) clearDragOver();
+  });
+  tbody.addEventListener('dragend', () => {
+    clearDragOver();
+    src = null;
+  });
   tbody.addEventListener('drop', (e) => {
     e.preventDefault();
+    clearDragOver();
     const tr = e.target.closest('tr[data-row]');
     if (!tr) return;
     const dst = parseInt(tr.dataset.row, 10);
     if (src === null || dst === src) return;
+    pushUndoSnapshot();
     const srcRow = part.rows[src], dstRow = part.rows[dst];
     dstRow.tema = [dstRow.tema, srcRow.tema].filter(Boolean).join(state.separator);
     dstRow.dz = [dstRow.dz, srcRow.dz].filter(Boolean).join(state.separator);
@@ -430,7 +640,8 @@ function setupEditorEvents(part) {
     srcRow.tema = '';
     srcRow.dz = '';
     srcRow.status = 'cancelled';
-    drawPartTable();
+    drawPartTable({ keepScroll: true });
+    scheduleDraftSave();
   });
 }
 
@@ -448,24 +659,28 @@ function highlightRows() {
 function cancelSelected() {
   if (!state.selectedRows.size) return alert('Выделите строки');
   const rows = state.parts[state.activeTab].rows;
+  pushUndoSnapshot();
   state.selectedRows.forEach(i => {
     preserveForRestore(rows[i]);
     rows[i].status = 'cancelled';
     rows[i].tema = '';
     rows[i].dz = '';
   });
-  drawPartTable();
+  drawPartTable({ keepScroll: true });
+  scheduleDraftSave();
 }
 
 function restoreSelected() {
   if (!state.selectedRows.size) return alert('Выделите строки');
   const rows = state.parts[state.activeTab].rows;
+  pushUndoSnapshot();
   state.selectedRows.forEach(i => {
     rows[i].status = 'normal';
     if (!rows[i].tema && rows[i]._backupTema) rows[i].tema = rows[i]._backupTema;
     if (!rows[i].dz && rows[i]._backupDz) rows[i].dz = rows[i]._backupDz;
   });
-  drawPartTable();
+  drawPartTable({ keepScroll: true });
+  scheduleDraftSave();
 }
 
 function setTemplate(t) {
@@ -474,30 +689,37 @@ function setTemplate(t) {
 
   if (!state.selectedRows.size) {
     showInfo(`Выбран шаблон: ${t}. Теперь можно нажать «Установить всем...»`);
+    scheduleDraftSave();
     return;
   }
 
   const rows = state.parts[state.activeTab].rows;
+  pushUndoSnapshot();
   state.selectedRows.forEach(i => { if (rows[i].status !== 'cancelled') rows[i].dz = t; });
   showInfo(`Шаблон «${t}» применен к выделенным строкам`);
-  drawPartTable();
+  drawPartTable({ keepScroll: true });
+  scheduleDraftSave();
 }
 
 function applyTemplateToPart() {
   const tpl = state.currentTemplate || 'Конспект';
   const rows = state.parts[state.activeTab].rows;
+  pushUndoSnapshot();
   rows.forEach(r => { if (r.status !== 'cancelled') r.dz = tpl; });
   showInfo(`Шаблон «${tpl}» установлен для всех уроков текущей части`);
-  drawPartTable();
+  drawPartTable({ keepScroll: true });
+  scheduleDraftSave();
 }
 
 function applyTemplateToAllParts() {
   const tpl = state.currentTemplate || 'Конспект';
+  pushUndoSnapshot();
   state.parts.forEach(part => {
     part.rows.forEach(r => { if (r.status !== 'cancelled') r.dz = tpl; });
   });
   showInfo(`Шаблон «${tpl}» установлен для всех уроков во всех частях`);
-  drawPartTable();
+  drawPartTable({ keepScroll: true });
+  scheduleDraftSave();
 }
 
 function updateTemplateState() {
@@ -520,11 +742,11 @@ function doExport() {
   const links = [];
 
   for (let i = 0; i < state.parts.length; i++) {
-    const data = [['Тема урока', 'Домашнее задание']];
-    state.parts[i].rows.forEach(r => data.push([r.tema || '', r.dz || '']));
+    const data = [['№ урока', 'Тема урока', 'Домашнее задание']];
+    state.parts[i].rows.forEach((r, idx) => data.push([idx + 1, r.tema || '', r.dz || '']));
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet(data);
-    ws['!cols'] = [{wch: 60}, {wch: 40}];
+    ws['!cols'] = [{wch: 12}, {wch: 60}, {wch: 40}];
     XLSX.utils.book_append_sheet(wb, ws, 'Уроки');
 
     const fileName = `${p}${i + 1}.xls`;
