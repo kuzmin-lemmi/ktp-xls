@@ -287,6 +287,45 @@ select.styled:focus { border-color: var(--primary); ring: 2px var(--primary-ligh
 .tab-btn.active .tab-stat { background: var(--primary-light); color: var(--primary); }
 .tab-stat-warn { background: var(--warning-light) !important; color: #92400e !important; }
 
+/* ===== PART SWITCHER ===== */
+.part-switcher {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  padding: 12px 0 16px;
+}
+.part-switch-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 12px 20px; border: 2px solid var(--slate-200);
+  border-radius: 12px; background: var(--slate-50);
+  cursor: pointer; transition: all 0.18s;
+  min-width: 130px;
+}
+.part-switch-btn:hover {
+  border-color: var(--primary); background: var(--primary-light);
+}
+.part-switch-btn.part-switch-active {
+  border-color: var(--primary); background: var(--primary-light);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 20%, transparent);
+}
+.part-switch-btn.part-switch-warn {
+  border-color: var(--warning); background: var(--warning-light);
+}
+.psb-label {
+  font-size: 1.3rem; font-weight: 800;
+  color: var(--slate-700);
+}
+.part-switch-active .psb-label { color: var(--primary); }
+.part-switch-warn .psb-label { color: #92400e; }
+.psb-sublabel {
+  font-size: 0.72rem; color: var(--slate-500); font-weight: 500;
+}
+.part-switch-active .psb-sublabel { color: var(--primary); }
+.psb-stat {
+  font-size: 0.75rem; font-weight: 700;
+  color: var(--slate-500); margin-top: 2px;
+}
+.part-switch-active .psb-stat { color: var(--primary); }
+.part-switch-warn .psb-stat { color: #92400e; }
+
 /* ===== EDITOR ===== */
 .editor-toolbar {
   display: flex; align-items: center; gap: 8px; padding: 10px 0 6px;

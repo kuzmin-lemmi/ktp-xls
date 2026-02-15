@@ -83,16 +83,22 @@ function getPartStats(partIdx) {
   return { total, cancelled, emptyDz, active: total - cancelled };
 }
 
-function syncTabStats() {
-  const p = state.periodMode === 'quarters' ? 'Ч' : 'П';
-  document.querySelectorAll('.tab-btn').forEach((btn, i) => {
+function syncPartSwitcher() {
+  const fullLabel = state.periodMode === 'quarters' ? 'четверть' : 'полугодие';
+  document.querySelectorAll('.part-switch-btn').forEach(btn => {
+    const i = parseInt(btn.dataset.pi, 10);
     if (i >= state.parts.length) return;
     const s = getPartStats(i);
+    const active = i === state.activeTab;
     const warn = s.cancelled > 0 || s.emptyDz > 0;
-    btn.innerHTML = `${p}${i + 1} <span class="tab-stat${warn ? ' tab-stat-warn' : ''}">${s.active}/${s.total}</span>`;
-    btn.classList.toggle('active', i === state.activeTab);
+    btn.classList.toggle('part-switch-active', active);
+    btn.classList.toggle('part-switch-warn', !active && warn);
+    btn.querySelector('.psb-stat').textContent = `${s.active} из ${s.total} уроков`;
   });
 }
+
+// Legacy alias kept for any callers
+function syncTabStats() { syncPartSwitcher(); }
 
 function clearDraft() {
   if (!window.confirm('Очистить черновик? Текущие правки останутся, но автосохранение будет сброшено.')) return;
@@ -564,24 +570,36 @@ function buildPartsNext() {
 /**
  * STEP 4 — EDITOR
  */
-function renderStep4(c) {
+function buildPartSwitcher() {
   const n = state.parts.length;
   const p = state.periodMode === 'quarters' ? 'Ч' : 'П';
-  let tabs = '';
+  const fullLabel = state.periodMode === 'quarters' ? 'четверть' : 'полугодие';
+  let html = `<div class="part-switcher" id="part-switcher">`;
   for (let i = 0; i < n; i++) {
     const s = getPartStats(i);
-    const warn = s.cancelled > 0 || s.emptyDz > 0;
-    tabs += `<button class="tab-btn${i === 0 ? ' active' : ''}" data-ti="${i}">${p}${i + 1} <span class="tab-stat${warn ? ' tab-stat-warn' : ''}">${s.active}/${s.total}</span></button>`;
+    const active = i === state.activeTab;
+    const warn = !active && (s.cancelled > 0 || s.emptyDz > 0);
+    html += `
+      <button class="part-switch-btn${active ? ' part-switch-active' : ''}${warn ? ' part-switch-warn' : ''}" data-pi="${i}">
+        <span class="psb-label">${p}${i + 1}</span>
+        <span class="psb-sublabel">${i + 1}-я ${fullLabel}</span>
+        <span class="psb-stat">${s.active} из ${s.total} уроков</span>
+      </button>`;
   }
+  html += `</div>`;
+  return html;
+}
 
+function renderStep4(c) {
+  const n = state.parts.length;
   const partLabel = state.periodMode === 'quarters' ? 'четверти' : 'полугодии';
 
   c.innerHTML = `
     <div class="card">
       <h2>Шаг 4. Редактор и экспорт</h2>
       <p class="sub">Проверьте данные. Темы можно перетаскивать мышкой для объединения уроков.</p>
-      
-      <div class="tabs" id="tabs">${tabs}</div>
+
+      <div id="part-switcher-wrap">${buildPartSwitcher()}</div>
 
       <div class="editor-toolbar">
         <button class="btn btn-danger btn-sm" id="btn-cancel">✖ Отменить урок</button>
@@ -619,12 +637,12 @@ function renderStep4(c) {
   state.activeTab = 0;
   state.selectedRows = new Set();
   
-  document.getElementById('tabs').onclick = e => {
-    const b = e.target.closest('.tab-btn');
+  document.getElementById('part-switcher').onclick = e => {
+    const b = e.target.closest('.part-switch-btn');
     if (!b) return;
-    state.activeTab = parseInt(b.dataset.ti, 10);
+    state.activeTab = parseInt(b.dataset.pi, 10);
     state.selectedRows = new Set();
-    document.querySelectorAll('.tab-btn').forEach((x, i) => x.classList.toggle('active', i === state.activeTab));
+    syncPartSwitcher();
     drawPartTable();
   };
 
