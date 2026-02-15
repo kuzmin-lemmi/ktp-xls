@@ -289,12 +289,13 @@ function renderTableList() {
 
     const d = document.createElement('div');
     d.className = `table-item${isSelected ? ' selected' : ''}`;
+    const dataRowsActual = state.hasHeader ? totalRows - 1 : totalRows;
     d.innerHTML = `
       <div class="table-item-header">
         <div>
           <b>Таблица ${i + 1}</b>
           <span class="tbl-stat">всего строк: <b>${totalRows}</b></span>
-          <span class="tbl-stat tbl-stat-lessons">уроков: <b>${dataRows}</b> ${lessonWord(dataRows)}</span>
+          <span class="tbl-stat tbl-stat-lessons">уроков: <b>${dataRowsActual}</b> ${lessonWord(dataRowsActual)}</span>
           <span class="tbl-stat tbl-stat-cols">${cols} столбцов</span>
         </div>
       </div>
@@ -303,6 +304,12 @@ function renderTableList() {
         <div class="row-preview-line header-line">${firstRowPreview}</div>
         <div class="preview-section-label" style="margin-top:8px">Последние строки (проверьте на «мусор»):</div>
         ${lastRowsPreview}
+      </div>
+      <div class="table-item-footer" onclick="event.stopPropagation()">
+        <label class="header-checkbox-label">
+          <input type="checkbox" class="header-checkbox" data-idx="${i}" ${state.hasHeader ? 'checked' : ''}>
+          <span>Первая строка — заголовки (не считать уроком)</span>
+        </label>
       </div>`;
 
     d.onclick = () => {
@@ -315,6 +322,23 @@ function renderTableList() {
   });
 
   document.getElementById('btn-next1').disabled = state.selectedTableIdx === null;
+
+  // Обработчики галочек "первая строка — заголовок"
+  document.querySelectorAll('.header-checkbox').forEach(cb => {
+    cb.onchange = (e) => {
+      state.hasHeader = e.target.checked;
+      // синхронизируем все остальные галочки
+      document.querySelectorAll('.header-checkbox').forEach(x => x.checked = state.hasHeader);
+      // пересчитываем счётчики уроков без полного ре-рендера
+      document.querySelectorAll('.tbl-stat-lessons').forEach((el, idx) => {
+        if (idx >= state.rawTables.length) return;
+        const total = state.rawTables[idx].rows.length;
+        const cnt = state.hasHeader ? total - 1 : total;
+        const lw = cnt === 1 ? 'урок' : (cnt >= 2 && cnt <= 4 ? 'урока' : 'уроков');
+        el.innerHTML = `уроков: <b>${cnt}</b> ${lw}`;
+      });
+    };
+  });
 }
 
 function autoDetectColumns() {
@@ -350,10 +374,6 @@ function renderStep2(c) {
           <label for="no-dz"><b>В этом КТП нет столбца ДЗ</b> (сделать его пустым)</label>
         </div>
         <div class="option-row">
-          <input type="checkbox" id="has-header" ${state.hasHeader ? 'checked' : ''}>
-          <label for="has-header">Первая строка — заголовки (не включать в экспорт)</label>
-        </div>
-        <div class="option-row">
           <label for="separator">Разделитель тем:</label>
           <select id="separator" class="styled">
             <option value="\n">Перенос строки</option>
@@ -375,11 +395,6 @@ function renderStep2(c) {
     if (state.noDz) state.dzCol = null; 
     drawPreview(); 
     updateColStatus(); 
-  };
-  document.getElementById('has-header').onchange = (e) => { 
-    state.hasHeader = e.target.checked; 
-    const table = state.rawTables[state.selectedTableIdx];
-    state.totalDataRows = Math.max(0, table.rows.length - (state.hasHeader ? 1 : 0));
   };
   document.getElementById('separator').onchange = (e) => { state.separator = e.target.value; };
   document.getElementById('btn-next2').onclick = () => renderStep(3);
