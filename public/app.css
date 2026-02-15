@@ -288,10 +288,21 @@ select.styled:focus { border-color: var(--primary); ring: 2px var(--primary-ligh
 .tab-stat-warn { background: var(--warning-light) !important; color: #92400e !important; }
 
 /* ===== EDITOR ===== */
-.editor-toolbar { 
-  display: flex; align-items: center; gap: 8px; padding: 12px 0; flex-wrap: wrap; 
-  background: white; position: sticky; top: 0; z-index: 20;
+.editor-toolbar {
+  display: flex; align-items: center; gap: 8px; padding: 10px 0 6px;
+  background: white;
 }
+
+.dz-block {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: var(--slate-50); border: 1px solid var(--slate-200);
+  border-radius: 12px; padding: 10px 14px; margin-bottom: 8px;
+}
+.dz-block-label { font-size: 0.8rem; font-weight: 700; color: var(--slate-500); white-space: nowrap; }
+.dz-tpl-group { display: flex; gap: 6px; flex-wrap: wrap; }
+.dz-apply-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+.tpl-state-badge { font-size: 0.75rem; font-weight: 700; color: var(--primary); background: var(--primary-light); border-radius: 8px; padding: 3px 10px; white-space: nowrap; }
+
 .editor-toolbar .sep { width: 1px; height: 24px; background: var(--slate-200); margin: 0 4px; }
 .tpl-btn {
   padding: 8px 14px; border-radius: 8px;
@@ -356,6 +367,7 @@ select.styled:focus { border-color: var(--primary); ring: 2px var(--primary-ligh
   transition: all 0.15s;
 }
 .row-act-btn:hover { border-color: var(--primary); background: var(--primary-light); color: var(--primary); }
+.cancelled-badge-sm { font-size: 0.72rem; font-weight: 700; color: var(--slate-400); letter-spacing: 0.03em; }
 
 .cancelled-badge {
   display: inline-block; background: var(--danger); color: white;

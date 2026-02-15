@@ -574,27 +574,34 @@ function renderStep4(c) {
     tabs += `<button class="tab-btn${i === 0 ? ' active' : ''}" data-ti="${i}">${p}${i + 1} <span class="tab-stat${warn ? ' tab-stat-warn' : ''}">${s.active}/${s.total}</span></button>`;
   }
 
+  const partLabel = state.periodMode === 'quarters' ? 'четверти' : 'полугодии';
+
   c.innerHTML = `
     <div class="card">
       <h2>Шаг 4. Редактор и экспорт</h2>
       <p class="sub">Проверьте данные. Темы можно перетаскивать мышкой для объединения уроков.</p>
       
       <div class="tabs" id="tabs">${tabs}</div>
-      
+
       <div class="editor-toolbar">
         <button class="btn btn-danger btn-sm" id="btn-cancel">✖ Отменить урок</button>
-        <button class="btn btn-secondary btn-sm" id="btn-restore">↩ Вернуть урок</button>
-        <button class="btn btn-secondary btn-sm" id="btn-clear-draft" title="Очистить сохранённый черновик">🗑 Черновик</button>
-        <div class="sep"></div>
-        <span style="font-size:0.8rem;color:var(--slate-500);font-weight:700">ШАБЛОНЫ:</span>
-        <button class="tpl-btn" data-tpl="Конспект">Конспект</button>
-        <button class="tpl-btn" data-tpl="Карточка">Карточка</button>
-        <button class="tpl-btn" data-tpl="§ ">§...</button>
-        <button class="tpl-btn" data-tpl="Упр. ">Упр...</button>
-        <div class="sep"></div>
-        <button class="btn btn-secondary btn-sm" id="btn-all-part">Установить всем в части</button>
-        <button class="btn btn-secondary btn-sm" id="btn-all-all">Установить всем во всех частях</button>
-        <div id="tpl-state" style="font-size:0.75rem;color:var(--primary);font-weight:700;margin-left:auto"></div>
+        <button class="btn btn-secondary btn-sm" id="btn-undo">↶ Отменить изменение</button>
+      </div>
+
+      <div class="dz-block">
+        <span class="dz-block-label">Домашнее задание:</span>
+        <div class="dz-tpl-group">
+          <button class="tpl-btn" data-tpl="Конспект">Конспект</button>
+          <button class="tpl-btn" data-tpl="Карточка">Карточка</button>
+          <button class="tpl-btn" data-tpl="§ ">Параграф</button>
+          <button class="tpl-btn" data-tpl="Упр. ">Упражнение</button>
+        </div>
+        <div class="dz-apply-group">
+          <span class="dz-block-label">Установить в:</span>
+          <button class="btn btn-secondary btn-sm" id="btn-all-part">текущей ${partLabel}</button>
+          <button class="btn btn-secondary btn-sm" id="btn-all-all">всех ${partLabel === 'четверти' ? 'четвертях' : 'полугодиях'}</button>
+          <span id="tpl-state" class="tpl-state-badge"></span>
+        </div>
       </div>
 
       <div id="warn-area"></div>
@@ -602,7 +609,7 @@ function renderStep4(c) {
       
       <div class="actions">
         <button class="btn btn-secondary btn-lg" id="btn-back4">← Назад</button>
-        <button class="btn btn-success btn-lg" id="btn-export">💾 Экспорт в Excel (.xls)</button>
+        <button class="btn btn-success btn-lg" id="btn-export">💾 Экспорт в Excel</button>
       </div>
     </div>`;
 
@@ -620,12 +627,11 @@ function renderStep4(c) {
 
   document.getElementById('btn-back4').onclick = () => renderStep(3);
   document.getElementById('btn-cancel').onclick = cancelSelected;
-  document.getElementById('btn-restore').onclick = restoreSelected;
-  document.getElementById('btn-clear-draft').onclick = clearDraft;
+  document.getElementById('btn-undo').onclick = undoLastAction;
   document.getElementById('btn-all-part').onclick = applyTemplateToPart;
   document.getElementById('btn-all-all').onclick = applyTemplateToAllParts;
   document.getElementById('btn-export').onclick = doExport;
-  
+
   document.querySelectorAll('.tpl-btn').forEach(b => {
     if (b.dataset.tpl === state.currentTemplate) b.classList.add('active-tpl');
     b.onclick = () => setTemplate(b.dataset.tpl);
@@ -668,8 +674,8 @@ function drawPartTable(opts = {}) {
   part.rows.forEach((r, i) => {
     const cancelled = r.status === 'cancelled';
     const actBtns = cancelled
-      ? `<button class="row-act-btn" data-act="restore-row" data-row="${i}" title="Вернуть">↩</button>`
-      : `<button class="row-act-btn" data-act="cancel-row" data-row="${i}" title="Отменить">✖</button><button class="row-act-btn" data-act="copy-dz-down" data-row="${i}" title="Копировать ДЗ вниз">↓</button>`;
+      ? `<span class="cancelled-badge-sm">отменён</span>`
+      : `<button class="row-act-btn" data-act="cancel-row" data-row="${i}" title="Отменить урок">✖</button><button class="row-act-btn" data-act="copy-dz-down" data-row="${i}" title="Копировать ДЗ вниз">↓</button>`;
     h += `
       <tr data-row="${i}" class="${cancelled ? 'cancelled' : ''}${state.selectedRows.has(i) ? ' selected-row' : ''}" draggable="${!cancelled}">
         <td class="td-num">${i + 1}</td>
