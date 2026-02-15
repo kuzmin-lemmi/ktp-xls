@@ -213,25 +213,28 @@ header span { font-size: 0.8rem; color: var(--slate-500); font-weight: 500; }
 
 /* ===== PREVIEW TABLE ===== */
 .preview-wrap { 
-  overflow: auto; margin: 12px 0; border-radius: 12px; 
+  overflow-x: auto; overflow-y: auto; margin: 12px 0; border-radius: 12px; 
   border: 1px solid var(--slate-200); max-height: 35vh; 
   background: var(--slate-50);
 }
-.preview-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 0.85rem; }
+.preview-table { width: max-content; min-width: 100%; border-collapse: separate; border-spacing: 0; font-size: 0.85rem; }
 .preview-table th {
   background: white; padding: 12px 16px;
   text-align: left; border-bottom: 1px solid var(--slate-200);
+  border-right: 1px solid var(--slate-200);
   cursor: pointer; user-select: none; font-weight: 700; color: var(--slate-600);
   position: sticky; top: 0; z-index: 10;
 }
+.preview-table th:last-child { border-right: none; }
 .preview-table th:hover { background: var(--slate-50); color: var(--primary); }
 .preview-table th.col-tema { background: var(--primary-light); color: var(--primary); }
 .preview-table th.col-dz { background: var(--success-light); color: var(--success); }
 .preview-table td { 
-  padding: 10px 16px; border-bottom: 1px solid var(--slate-100); 
+  padding: 10px 16px; border-bottom: 1px solid var(--slate-100); border-right: 1px solid var(--slate-200);
   max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; 
   background: white;
 }
+.preview-table td:last-child { border-right: none; }
 .col-badge { display: inline-block; font-size: 0.6rem; font-weight: 800; padding: 2px 6px; border-radius: 4px; margin-left: 6px; vertical-align: middle; }
 .badge-tema { background: var(--primary); color: white; }
 .badge-dz { background: var(--success); color: white; }
