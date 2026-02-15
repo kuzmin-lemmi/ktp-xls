@@ -24,11 +24,35 @@ const state = {
   previewRows: [],
   defaultDzForAll: '',
   currentTemplate: 'Конспект',
-  lastClickedRow: null
+  lastClickedRow: null,
+  undoStack: []
 };
 
 function cloneParts(parts) {
   return parts.map(p => ({ rows: p.rows.map(r => ({ ...r })) }));
+}
+
+function pushUndoSnapshot() {
+  if (!state.parts.length) return;
+  state.undoStack.push({
+    activeTab: state.activeTab,
+    parts: cloneParts(state.parts)
+  });
+  if (state.undoStack.length > 100) state.undoStack.shift();
+}
+
+function undoLastAction() {
+  if (!state.undoStack.length) {
+    showInfo('Нет действий для отмены');
+    return;
+  }
+  const prev = state.undoStack.pop();
+  state.parts = cloneParts(prev.parts);
+  state.activeTab = Math.max(0, Math.min(prev.activeTab, state.parts.length - 1));
+  state.selectedRows = new Set();
+  state.lastClickedRow = null;
+  drawPartTable({ keepScroll: true });
+  showInfo('Последнее изменение отменено');
 }
 
 function scheduleDraftSave() {
@@ -636,6 +660,7 @@ function renderStep4(c) {
 
   state.activeTab = 0;
   state.selectedRows = new Set();
+  state.undoStack = [];
   
   document.getElementById('part-switcher').onclick = e => {
     const b = e.target.closest('.part-switch-btn');
@@ -726,11 +751,13 @@ function setupEditorEvents(part) {
       const idx = parseInt(actBtn.dataset.row, 10);
       if (Number.isNaN(idx) || !part.rows[idx]) return;
       if (actBtn.dataset.act === 'cancel-row') {
+        pushUndoSnapshot();
         preserveForRestore(part.rows[idx]);
         part.rows[idx].status = 'cancelled';
         part.rows[idx].tema = ''; part.rows[idx].dz = '';
         drawPartTable({ keepScroll: true });
       } else if (actBtn.dataset.act === 'restore-row') {
+        pushUndoSnapshot();
         part.rows[idx].status = 'normal';
         if (!part.rows[idx].tema && part.rows[idx]._backupTema) part.rows[idx].tema = part.rows[idx]._backupTema;
         if (!part.rows[idx].dz && part.rows[idx]._backupDz) part.rows[idx].dz = part.rows[idx]._backupDz;
@@ -738,6 +765,7 @@ function setupEditorEvents(part) {
       } else if (actBtn.dataset.act === 'copy-dz-down') {
         if (idx + 1 >= part.rows.length) { showInfo('Ниже нет строки'); return; }
         if (part.rows[idx + 1].status === 'cancelled') { showInfo('Нижняя строка отменена'); return; }
+        pushUndoSnapshot();
         part.rows[idx + 1].dz = part.rows[idx].dz || '';
         drawPartTable({ keepScroll: true });
       }
@@ -772,7 +800,9 @@ function setupEditorEvents(part) {
     td.focus();
     const save = () => {
       td.contentEditable = 'false';
-      part.rows[r][f] = td.innerText.trim();
+      const nextValue = td.innerText.trim();
+      if (part.rows[r][f] !== nextValue) pushUndoSnapshot();
+      part.rows[r][f] = nextValue;
       if (f === 'tema' && !part.rows[r][f]) {
         preserveForRestore(part.rows[r]);
         part.rows[r].status = 'cancelled';
@@ -826,6 +856,7 @@ function setupEditorEvents(part) {
     if (!tr) return;
     const dst = parseInt(tr.dataset.row, 10);
     if (src === null || dst === src) return;
+    pushUndoSnapshot();
     const srcRow = part.rows[src], dstRow = part.rows[dst];
     if (dstRow.status === 'cancelled') {
       dstRow.tema = srcRow.tema; dstRow.dz = srcRow.dz; dstRow.status = 'normal';
@@ -853,6 +884,7 @@ function highlightRows() {
 function cancelSelected() {
   if (!state.selectedRows.size) return alert('Выделите строки для отмены');
   const rows = state.parts[state.activeTab].rows;
+  pushUndoSnapshot();
   state.selectedRows.forEach(i => {
     preserveForRestore(rows[i]);
     rows[i].status = 'cancelled';
@@ -864,6 +896,7 @@ function cancelSelected() {
 function restoreSelected() {
   if (!state.selectedRows.size) return alert('Выделите строки для возврата');
   const rows = state.parts[state.activeTab].rows;
+  pushUndoSnapshot();
   state.selectedRows.forEach(i => {
     rows[i].status = 'normal';
     if (!rows[i].tema && rows[i]._backupTema) rows[i].tema = rows[i]._backupTema;
@@ -882,6 +915,7 @@ function applyTemplateToSelected() {
   const tpl = state.currentTemplate;
   if (!state.selectedRows.size) { showInfo('Выделите строки в таблице (кликом)'); return; }
   const rows = state.parts[state.activeTab].rows;
+  pushUndoSnapshot();
   state.selectedRows.forEach(i => { if (rows[i].status !== 'cancelled') rows[i].dz = tpl; });
   showInfo(`«${tpl}» установлен для выделенных строк`);
   drawPartTable({ keepScroll: true });
@@ -890,6 +924,7 @@ function applyTemplateToSelected() {
 function applyTemplateToPart() {
   const tpl = state.currentTemplate;
   if (!tpl) { showInfo('Сначала выберите шаблон'); return; }
+  pushUndoSnapshot();
   state.parts[state.activeTab].rows.forEach(r => { if (r.status !== 'cancelled') r.dz = tpl; });
   const p = state.periodMode === 'quarters' ? 'Ч' : 'П';
   showInfo(`«${tpl}» установлен для всей ${p}${state.activeTab + 1}`);
@@ -899,6 +934,7 @@ function applyTemplateToPart() {
 function applyTemplateToAllParts() {
   const tpl = state.currentTemplate;
   if (!tpl) { showInfo('Сначала выберите шаблон'); return; }
+  pushUndoSnapshot();
   state.parts.forEach(p => p.rows.forEach(r => { if (r.status !== 'cancelled') r.dz = tpl; }));
   showInfo(`«${tpl}» установлен для всех уроков`);
   drawPartTable({ keepScroll: true });
