@@ -978,6 +978,9 @@ function doExport() {
         <button class="btn btn-success btn-lg" id="btn-generate">Сформировать файлы →</button>
       </div>
       <div id="export-links-area"></div>
+      <div style="margin-top:14px;display:flex;justify-content:center">
+        <button class="btn btn-secondary btn-lg" id="btn-start-over">↺ Начать с начала</button>
+      </div>
     </div>`;
 
   const input = document.getElementById('class-name-input');
@@ -991,6 +994,7 @@ function doExport() {
 
   input.addEventListener('keydown', e => { if (e.key === 'Enter') generateLinks(); });
   document.getElementById('btn-generate').onclick = generateLinks;
+  document.getElementById('btn-start-over').onclick = startFromBeginning;
 
   function generateLinks() {
     const cls = input.value.trim();
@@ -1020,6 +1024,34 @@ function doExport() {
         <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:440px">${htmlLinks}</div>
       </div>`;
   }
+}
+
+function startFromBeginning() {
+  Object.assign(state, {
+    fileName: null,
+    rawTables: [],
+    selectedTableIdx: null,
+    temaCol: null,
+    dzCol: null,
+    noDz: false,
+    hasHeader: true,
+    separator: '\n',
+    periodMode: 'quarters',
+    partCounts: [],
+    parts: [],
+    totalDataRows: 0,
+    activeTab: 0,
+    selectedRows: new Set(),
+    currentStep: 1,
+    previewHeaders: [],
+    previewRows: [],
+    defaultDzForAll: '',
+    currentTemplate: 'Конспект',
+    lastClickedRow: null,
+    undoStack: []
+  });
+  try { localStorage.removeItem(DRAFT_KEY); } catch {}
+  renderStep(1);
 }
 
 async function parseDocx(file) {
