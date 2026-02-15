@@ -589,18 +589,21 @@ function renderStep4(c) {
       </div>
 
       <div class="dz-block">
-        <span class="dz-block-label">Домашнее задание:</span>
-        <div class="dz-tpl-group">
-          <button class="tpl-btn" data-tpl="Конспект">Конспект</button>
-          <button class="tpl-btn" data-tpl="Карточка">Карточка</button>
-          <button class="tpl-btn" data-tpl="§ ">Параграф</button>
-          <button class="tpl-btn" data-tpl="Упр. ">Упражнение</button>
-        </div>
-        <div class="dz-apply-group">
-          <span class="dz-block-label">Установить в:</span>
-          <button class="btn btn-secondary btn-sm" id="btn-all-part">текущей ${partLabel}</button>
-          <button class="btn btn-secondary btn-sm" id="btn-all-all">всех ${partLabel === 'четверти' ? 'четвертях' : 'полугодиях'}</button>
+        <div class="dz-row">
+          <span class="dz-block-label">ДЗ — шаблон:</span>
+          <div class="dz-tpl-group">
+            <button class="tpl-btn" data-tpl="Конспект">Конспект</button>
+            <button class="tpl-btn" data-tpl="Карточка">Карточка</button>
+            <button class="tpl-btn" data-tpl="§ ">Параграф</button>
+            <button class="tpl-btn" data-tpl="Упр. ">Упражнение</button>
+          </div>
           <span id="tpl-state" class="tpl-state-badge"></span>
+        </div>
+        <div class="dz-row">
+          <span class="dz-block-label">Установить выбранный шаблон:</span>
+          <button class="btn btn-secondary btn-sm" id="btn-sel-rows">→ выделенным строкам</button>
+          <button class="btn btn-secondary btn-sm" id="btn-all-part">→ всей ${partLabel}</button>
+          <button class="btn btn-secondary btn-sm" id="btn-all-all">→ всем ${partLabel === 'четверти' ? 'четвертям' : 'полугодиям'}</button>
         </div>
       </div>
 
@@ -628,6 +631,7 @@ function renderStep4(c) {
   document.getElementById('btn-back4').onclick = () => renderStep(3);
   document.getElementById('btn-cancel').onclick = cancelSelected;
   document.getElementById('btn-undo').onclick = undoLastAction;
+  document.getElementById('btn-sel-rows').onclick = applyTemplateToSelected;
   document.getElementById('btn-all-part').onclick = applyTemplateToPart;
   document.getElementById('btn-all-all').onclick = applyTemplateToAllParts;
   document.getElementById('btn-export').onclick = doExport;
@@ -854,30 +858,37 @@ function setTemplate(t) {
   state.currentTemplate = t;
   document.querySelectorAll('.tpl-btn').forEach(b => b.classList.toggle('active-tpl', b.dataset.tpl === t));
   updateTemplateState();
-  if (state.selectedRows.size > 0) {
-    const rows = state.parts[state.activeTab].rows;
-    state.selectedRows.forEach(i => { if (rows[i].status !== 'cancelled') rows[i].dz = t; });
-    drawPartTable();
-  }
+}
+
+function applyTemplateToSelected() {
+  const tpl = state.currentTemplate;
+  if (!state.selectedRows.size) { showInfo('Выделите строки в таблице (кликом)'); return; }
+  const rows = state.parts[state.activeTab].rows;
+  state.selectedRows.forEach(i => { if (rows[i].status !== 'cancelled') rows[i].dz = tpl; });
+  showInfo(`«${tpl}» установлен для выделенных строк`);
+  drawPartTable({ keepScroll: true });
 }
 
 function applyTemplateToPart() {
   const tpl = state.currentTemplate;
+  if (!tpl) { showInfo('Сначала выберите шаблон'); return; }
   state.parts[state.activeTab].rows.forEach(r => { if (r.status !== 'cancelled') r.dz = tpl; });
-  showInfo(`Шаблон «${tpl}» применен ко всей части`);
-  drawPartTable();
+  const p = state.periodMode === 'quarters' ? 'Ч' : 'П';
+  showInfo(`«${tpl}» установлен для всей ${p}${state.activeTab + 1}`);
+  drawPartTable({ keepScroll: true });
 }
 
 function applyTemplateToAllParts() {
   const tpl = state.currentTemplate;
+  if (!tpl) { showInfo('Сначала выберите шаблон'); return; }
   state.parts.forEach(p => p.rows.forEach(r => { if (r.status !== 'cancelled') r.dz = tpl; }));
-  showInfo(`Шаблон «${tpl}» применен ко всем урокам`);
-  drawPartTable();
+  showInfo(`«${tpl}» установлен для всех уроков`);
+  drawPartTable({ keepScroll: true });
 }
 
 function updateTemplateState() {
   const el = document.getElementById('tpl-state');
-  if (el) el.textContent = `ВЫБРАН: ${state.currentTemplate.toUpperCase()}`;
+  if (el) el.textContent = state.currentTemplate ? `Выбран: ${state.currentTemplate}` : '';
 }
 
 function showInfo(msg) {
